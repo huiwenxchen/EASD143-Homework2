@@ -1,37 +1,64 @@
 import streamlit as st
-import cv2
 import pytesseract
-import matplotlib.pyplot as plt
 import pandas as pd
+import cv2
+from PIL import Image
+import tempfile
+import os
+import numpy as np
 
-st.write("Hello world")
 
-st.markdown("# Main page 🎈")
-st.sidebar.markdown("# Main page 🎈")
 
-def draw_boxes(image, boxes, color, thickness):
-    for box in boxes:
-        x, y, w, h = box
-        cv2.rectangle(image, (x, y), (x + w, y + h), color, thickness)
-    return image
+def process_image(image, languages):
+    # Read the image using OpenCV
+    img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-uploaded_file = st.file_uploader(label="Upload an image", accept_multiple_files=False,
-                type=["jpg", "jpeg", "png"], key=None)
+    # Perform OCR using tesseract
+    extracted_text = pytesseract.image_to_string(img, lang=languages)
 
-submit_button = st.button("Run OCR")
+    return extracted_text
 
-if submit_button:
+st.title("OCR Workflow X Streamlit")
 
-    if uploaded_file is not None:
+uploaded_files = st.file_uploader("Upload one or multiple image files for OCR", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
-        st.image(uploaded_file, caption="Uploaded image", use_column_width=True)
-        image = cv2.imread(uploaded_file)
-        lang = 'eng'
-        extracted_text = pytesseract.image_to_string(uploaded_file, lang=lang)
-        print(extracted_text)
+language_options = {
+    "English": "eng",
+    "Chinese": "chi_sim",
+    "French": "fra",
+    "Japanese": "jpn",
+    "Korean": "kor"
+}
+languages = st.multiselect("Select the language(s) for OCR", list(language_options.keys()), default=["English"])
+button = st.button("Process Images")
 
+def convert_df(df):
+   return df.to_csv(index=False).encode('utf-8')
+
+if button:
+    if uploaded_files and languages:
+        ocr_output = []
+        for uploaded_file in uploaded_files:
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(uploaded_file.getvalue())
+                temp_file.flush()
+                img = Image.open(temp_file.name)
+                extracted_text = process_image(img, "+".join([language_options[lang] for lang in languages]))
+                ocr_output.append({"File Name": uploaded_file.name, "Extracted Text": extracted_text})
+
+        ocr_output_df = pd.DataFrame(ocr_output)
+        st.write(ocr_output_df)
+        csv = convert_df(ocr_output_df)
+        save_button = st.download_button(
+            "Press to save as CSV",
+            csv,
+            "ocr_putput.csv",
+            "text/csv",
+            key='download-csv'
+        )
+        if save_button:
+            st.write("File saved successfully!")
 
     else:
-        # Display an error message if no file was uploaded
-        st.error("Please upload an image file.")
+        st.warning("Please upload image file(s) and/or select language(s) before processing OCR.")
 
